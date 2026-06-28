@@ -1,0 +1,12 @@
+# secrets — never commit your key
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# scratch / downloads
+*.mp4
+clip.*
