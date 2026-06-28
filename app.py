@@ -5,18 +5,19 @@ games AND the software tools, apps, and products the creator showed but never na
 No more "comment and I'll DM you the link." Runs locally. YouTube only.
 
 The clever bit: we don't build any intelligence. Gemini already "knows" these things.
-We just hand it the link, ask, and show the answer.
+We just hand it the link, ask, verify, and show the answer.
 """
 import os
 import re
+import html
 import json
 from urllib.parse import quote_plus
 
-# Optional: load GEMINI_API_KEY from a local .env file so you don't have to set it
-# in your shell every time. Safe to skip if python-dotenv isn't installed.
+# Load GEMINI_API_KEY from the .env that sits next to this file (works no matter
+# which folder you launch from). Safe to skip if python-dotenv isn't installed.
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 except ImportError:
     pass
 
@@ -24,36 +25,51 @@ from google import genai
 from google.genai import types
 import gradio as gr
 
-# Cheapest setup by default. flash-lite = cheapest video-capable model.
-# If it starts missing things, switch to "gemini-2.5-flash".
-MODEL = "gemini-2.5-flash-lite"
+# flash = good accuracy. For lowest cost (less accurate) use "gemini-2.5-flash-lite".
+MODEL = "gemini-2.5-flash"
 
 PROMPT = """You are watching a YouTube video. Creators often SHOW or TALK ABOUT things
-without clearly naming them, and the viewer wants the name.
+without naming them, and the viewer wants the name.
 
-Find every notable thing in the video a viewer might want to identify, such as:
-- a movie, TV series, anime, or documentary
-- a video game
-- a software tool, app, website, browser extension, or AI product
-- a gadget / physical product, or a song that is playing
+Identify every notable thing a viewer might want to name: a movie, TV series, anime,
+documentary, video game, software tool / app / website / AI product, a gadget or
+product, or a song that is playing.
 
-For EACH thing, return:
+CRITICAL accuracy rules — read carefully:
+- Do NOT identify from an actor's face alone. The same actor appears in many films, and
+  many movies share similar scenes (car chases, stunts, fights, running scenes).
+- Anchor your answer on DISTINCTIVE, verifiable evidence: a visible title card or logo,
+  on-screen text or captions, a unique location, a specific plot beat, or the video's own
+  title / caption.
+- If no definitive title or credit is visible and you are inferring, set "confidence" to
+  at most 0.6 and put up to 2 other plausible titles in "alternatives".
+- Prefer admitting uncertainty over a confident wrong guess.
+
+For EACH thing return:
 - "name": your best identification (the real title / product name)
 - "category": one of movie | series | anime | game | tool | app | website | product | song | other | unknown
-- "what_it_is": one short line on what it is or what it does
-- "confidence": a number 0.0 to 1.0 for how sure you are
+- "what_it_is": one short line on what it is or does
+- "confidence": a number 0.0 to 1.0
 - "timestamp": rough time it appears like "1:23", or "" if unclear
-- "evidence": the on-screen text, logo, UI, or spoken words you used to decide
+- "evidence": the exact on-screen text, logo, caption, or spoken words you used
+- "alternatives": array of other possible names, or []
 
 Rules:
 - Only include things actually worth identifying. Skip irrelevant background.
-- If you are NOT reasonably sure, set "category":"unknown" and a low confidence.
-  Never invent a name to look confident.
+- If you are NOT reasonably sure, use "category":"unknown" and a low confidence. Never invent.
+- Keep every field concise; keep "evidence" under 25 words.
 - If EXTRA CONTEXT (video description / top comments) is given below, treat it as a strong
   hint — viewers often name the thing in comments — but verify it against what you see and
   hear. If a comment named it, say so in "evidence".
 - Return STRICT JSON only: {"items": [ ... ]}. No text outside the JSON.
 """
+
+CATEGORIES = ["Any", "Movie", "TV series", "Anime", "Video game",
+              "Software / app / tool", "Car / vehicle", "Product", "Song", "Place / location"]
+
+CAT_EMOJI = {"movie": "🎬", "series": "📺", "anime": "🌸", "game": "🎮", "tool": "🛠️",
+             "app": "📱", "website": "🌐", "product": "📦", "song": "🎵",
+             "place": "📍", "other": "✨", "unknown": "❓"}
 
 # Built lazily so importing this file (e.g. for tests) never needs a key.
 _client = None
@@ -82,10 +98,6 @@ def parse_json(text: str) -> dict:
         if match:
             return json.loads(match.group(0))
         raise
-
-
-CATEGORIES = ["Any", "Movie", "TV series", "Anime", "Video game",
-              "Software / app / tool", "Car / vehicle", "Product", "Song", "Place / location"]
 
 
 def video_id(url: str):
@@ -151,7 +163,7 @@ def identify(url: str, category: str = "Any", focus: str = "") -> list:
     contents = types.Content(parts=[
         types.Part(
             file_data=types.FileData(file_uri=url),          # Gemini watches the URL
-            video_metadata=types.VideoMetadata(fps=1),       # 1 frame/sec = fewer tokens
+            video_metadata=types.VideoMetadata(fps=2),       # 2 fps = catches more detail
         ),
         types.Part(text=prompt),
     ])
@@ -160,59 +172,87 @@ def identify(url: str, category: str = "Any", focus: str = "") -> list:
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,  # ~4x fewer video tokens
-            thinking_config=types.ThinkingConfig(thinking_budget=0),      # skip thinking = cheaper
-            max_output_tokens=1024,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),  # off = cheaper + no truncation
+            max_output_tokens=4096,
         ),
     )
     return parse_json(resp.text).get("items", [])
 
 
-def search_links(name: str) -> str:
-    """We build search links ourselves (never trust an AI-invented URL)."""
+def _search_urls(name: str):
     q = quote_plus(name)
-    google = f"https://www.google.com/search?q={q}"
-    youtube = f"https://www.youtube.com/results?search_query={q}"
-    return f"[Google search]({google}) · [YouTube search]({youtube})"
+    return (f"https://www.google.com/search?q={q}",
+            f"https://www.youtube.com/results?search_query={q}")
 
 
-def to_markdown(items: list) -> str:
+def conf_class(c: float) -> str:
+    return "high" if c >= 0.75 else ("mid" if c >= 0.45 else "low")
+
+
+def to_html(items: list) -> str:
+    """Render the results as styled cards (clean, scannable, professional)."""
     if not items:
-        return ("**Nothing identified confidently.** Try a clearer or longer video, "
-                "or pick a category / add a focus hint to narrow it down.")
+        return ("<div class='empty'>Nothing identified confidently. Try a longer or clearer "
+                "clip, pick a category, or add a focus hint.</div>")
 
     items = sorted(items, key=lambda x: x.get("confidence", 0) or 0, reverse=True)
-    out = [f"### Found {len(items)} thing(s) in this video\n"]
+    cards = []
     for it in items:
-        name = it.get("name") or "Unknown"
-        cat = it.get("category", "?")
+        raw = str(it.get("name") or "Unknown")
+        name = html.escape(raw)
+        cat = html.escape(str(it.get("category", "?")))
         conf = it.get("confidence", 0) or 0
-        dot = "🟢" if conf >= 0.75 else ("🟡" if conf >= 0.45 else "🔴")
-        head = f"**{name}** · _{cat}_ · {dot} {conf:.0%}"
-        if it.get("timestamp"):
-            head += f" · ⏱ {it['timestamp']}"
-        out.append(head)
-        if it.get("what_it_is"):
-            out.append(f"> {it['what_it_is']}")
-        if name.lower() != "unknown" and cat != "unknown":
-            out.append(f"🔎 {search_links(name)}")
-        if it.get("evidence"):
-            out.append(f"_why: {it['evidence']}_")
-        out.append("")  # spacer line
-    out.append("_🟢 sure · 🟡 maybe · 🔴 guess. Low confidence can be wrong — treat it as a hint, not truth._")
-    return "\n".join(out)
+        cc = conf_class(conf)
+        emoji = CAT_EMOJI.get(cat.lower(), "✨")
+        ts = html.escape(str(it.get("timestamp") or ""))
+        chip = f"<span class='chip'>⏱ {ts}</span>" if ts else ""
+        desc = html.escape(str(it.get("what_it_is") or ""))
+        why = html.escape(str(it.get("evidence") or ""))
+
+        links = ""
+        if raw and raw.lower() != "unknown" and cat.lower() != "unknown":
+            g, y = _search_urls(raw)
+            links = ("<div class='links'>"
+                     f"<a class='btn' href='{g}' target='_blank' rel='noopener'>Google ↗</a>"
+                     f"<a class='btn' href='{y}' target='_blank' rel='noopener'>YouTube ↗</a></div>")
+
+        alts = it.get("alternatives") or []
+        alt_html = ""
+        if alts:
+            chips = " ".join(f"<span class='alt'>{html.escape(str(a))}</span>" for a in alts[:3])
+            alt_html = f"<div class='alts'>Could also be: {chips}</div>"
+
+        cards.append(
+            "<div class='card-item'>"
+            f"<div class='row1'><span class='emoji'>{emoji}</span>"
+            f"<span class='iname'>{name}</span>"
+            f"<span class='badge'>{cat}</span>"
+            f"<span class='conf {cc}'>{conf:.0%}</span>{chip}</div>"
+            + (f"<div class='desc'>{desc}</div>" if desc else "")
+            + alt_html + links
+            + (f"<div class='why'>Why: {why}</div>" if why else "")
+            + "</div>"
+        )
+
+    note = ("<div class='note'><span class='dot high'></span>sure"
+            "<span class='dot mid'></span>maybe"
+            "<span class='dot low'></span>guess &mdash; low confidence can be wrong, so verify.</div>")
+    plural = "s" if len(items) != 1 else ""
+    head = f"<div class='rhead'>Found {len(items)} thing{plural}</div>"
+    return f"<div class='results'>{head}{''.join(cards)}{note}</div>"
 
 
 def run(url: str, category: str = "Any", focus: str = "") -> str:
     url = (url or "").strip()
     if not url:
-        return "Paste a YouTube link first."
+        return "<div class='empty'>Paste a YouTube link first.</div>"
     if "youtu" not in url:
-        return "This build is **YouTube-only** for now. Paste a youtube.com or youtu.be link."
+        return ("<div class='empty'>This build is <b>YouTube-only</b> for now. "
+                "Paste a youtube.com or youtu.be link.</div>")
     try:
-        return to_markdown(identify(url, category, focus))
+        return to_html(identify(url, category, focus))
     except Exception as e:
-        return f"⚠️ Failed: {e}"
+        return f"<div class='empty err'>⚠️ Failed: {html.escape(str(e))}</div>"
 
 
 def embed_html(url: str) -> str:
@@ -229,7 +269,7 @@ def embed_html(url: str) -> str:
 
 HERO = """
 <div id="hero">
-  <h1>🎬 What's in this video?</h1>
+  <h1><span class="logo">▶</span> What's in this video?</h1>
   <p>Paste a YouTube link and find the movie, series, anime, game, or tool the creator never named.</p>
 </div>
 """
@@ -237,23 +277,61 @@ HERO = """
 FOOT = ("<div id='foot'>Runs locally · powered by Gemini · "
         "low-confidence guesses can be wrong, so verify.</div>")
 
+EMPTY_RESULT = ("<div class='empty'>Your results will appear here.<br>"
+                "<span class='empty-sub'>Paste a link, pick what you're after, then hit Identify.</span></div>")
+
 CSS = """
-.gradio-container {max-width: 1080px !important; margin: 0 auto !important;}
-#hero {text-align:center; padding: 14px 0 4px;}
-#hero h1 {font-size: 2rem; font-weight: 800; margin:0; letter-spacing:-0.02em;}
-#hero p {color: var(--body-text-color-subdued); margin:6px 0 0;}
-#go {font-weight:600; border-radius:12px;}
-.video-wrap {position:relative; width:100%; aspect-ratio:16/9; border-radius:14px;
+.gradio-container {max-width: 1100px !important; margin: 0 auto !important;}
+#hero {text-align:center; padding: 18px 0 2px;}
+#hero h1 {font-size: 2.1rem; font-weight: 800; margin:0; letter-spacing:-0.02em;}
+#hero h1 .logo {color:#e5322d;}
+#hero p {color: var(--body-text-color-subdued); margin:8px 0 0; font-size:1.02rem;}
+#go {font-weight:700; border-radius:12px; min-height:46px;}
+/* video */
+.video-wrap {position:relative; width:100%; aspect-ratio:16/9; border-radius:16px;
   overflow:hidden; background:#000; border:1px solid var(--border-color-primary);}
 .video-wrap iframe {position:absolute; inset:0; width:100%; height:100%; border:0;}
 .placeholder {display:flex; align-items:center; justify-content:center; height:100%;
-  color:#9ca3af; font-size:.95rem; text-align:center; padding:0 16px;}
-.card {border:1px solid var(--border-color-primary); border-radius:14px;
-  padding:4px 18px; background:var(--background-fill-secondary); min-height:200px;}
-#foot {text-align:center; color:var(--body-text-color-subdued); font-size:.85rem; margin-top:14px;}
+  color:#9aa0aa; font-size:.95rem; text-align:center; padding:0 16px;}
+/* results */
+.results {display:flex; flex-direction:column; gap:12px;}
+.rhead {font-weight:700; font-size:1.05rem; color:var(--body-text-color);}
+.card-item {border:1px solid var(--border-color-primary); border-radius:14px; padding:14px 16px;
+  background:var(--background-fill-primary); box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.row1 {display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.emoji {font-size:1.15rem;}
+.iname {font-weight:700; font-size:1.08rem; color:var(--body-text-color);}
+.badge {font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 9px;
+  border-radius:999px; background:var(--background-fill-secondary);
+  border:1px solid var(--border-color-primary); color:var(--body-text-color-subdued);}
+.conf {font-weight:700; font-size:.82rem; padding:2px 9px; border-radius:999px;}
+.conf.high {color:#0f7b3e; background:#e6f6ec;}
+.conf.mid {color:#9a6700; background:#fdf3d6;}
+.conf.low {color:#b42318; background:#fde7e4;}
+.chip {font-size:.78rem; color:var(--body-text-color-subdued); background:var(--background-fill-secondary);
+  padding:2px 9px; border-radius:999px;}
+.desc {margin-top:9px; color:var(--body-text-color); line-height:1.5;}
+.alts {margin-top:9px; font-size:.85rem; color:var(--body-text-color-subdued);}
+.alt {display:inline-block; padding:1px 9px; border:1px dashed var(--border-color-primary);
+  border-radius:999px; margin:0 4px 4px 0;}
+.links {margin-top:11px; display:flex; gap:8px; flex-wrap:wrap;}
+.links .btn {text-decoration:none; font-size:.82rem; font-weight:600; padding:7px 13px;
+  border-radius:10px; border:1px solid var(--border-color-primary);
+  color:var(--body-text-color); background:var(--background-fill-secondary); transition:.15s;}
+.links .btn:hover {border-color:#e5322d; color:#e5322d;}
+.why {margin-top:11px; font-size:.82rem; color:var(--body-text-color-subdued);
+  border-top:1px dashed var(--border-color-primary); padding-top:9px;}
+.note {margin-top:2px; font-size:.8rem; color:var(--body-text-color-subdued);
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;}
+.dot {display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 4px 0 8px;}
+.dot.high{background:#16a34a;} .dot.mid{background:#d99e00;} .dot.low{background:#e5484d;}
+.empty {padding:40px 18px; text-align:center; color:var(--body-text-color-subdued);
+  border:1px dashed var(--border-color-primary); border-radius:14px; line-height:1.7;}
+.empty.err {border-style:solid; border-color:#f0b4ad; color:#b42318;}
+.empty-sub {font-size:.85rem; opacity:.8;}
+#foot {text-align:center; color:var(--body-text-color-subdued); font-size:.85rem; margin-top:16px;}
 footer {display:none !important;}
 """
-
 
 THEME = gr.themes.Soft(
     primary_hue="red", neutral_hue="slate",
@@ -273,19 +351,18 @@ def build():
                                        label="What are you looking for?", scale=2)
                 focus = gr.Textbox(label="Anything specific? (optional)", scale=3,
                                    placeholder="e.g. the editing tool · the game")
-            go = gr.Button("🔍 Identify", variant="primary", elem_id="go")
+            go = gr.Button("🔍  Identify", variant="primary", elem_id="go")
         with gr.Row(equal_height=True):
             preview = gr.HTML(embed_html(""))
-            out = gr.Markdown("*Results will appear here after you hit Identify.*",
-                              elem_classes=["card"])
+            out = gr.HTML(EMPTY_RESULT)
         gr.Examples(examples=[["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Song", ""]],
                     inputs=[url, category, focus], label="Try an example")
         gr.HTML(FOOT)
 
-        url.change(embed_html, url, preview)          # live preview as you paste
-        go.click(embed_html, url, preview)            # ensure preview on click too
-        go.click(run, [url, category, focus], out)    # identify
-        url.submit(run, [url, category, focus], out)  # Enter = identify
+        url.change(embed_html, url, preview)            # live preview as you paste
+        go.click(embed_html, url, preview)              # ensure preview on click too
+        go.click(run, [url, category, focus], out)      # identify
+        url.submit(run, [url, category, focus], out)    # Enter = identify
     return demo
 
 
