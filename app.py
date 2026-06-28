@@ -192,8 +192,10 @@ def conf_class(c: float) -> str:
 def to_html(items: list) -> str:
     """Render the results as styled cards (clean, scannable, professional)."""
     if not items:
-        return ("<div class='empty'>Nothing identified confidently. Try a longer or clearer "
-                "clip, pick a category, or add a focus hint.</div>")
+        return ("<div class='empty'><span class='eglyph'>🔍</span>"
+                "Nothing identified confidently.<br>"
+                "<span class='empty-sub'>Try a longer or clearer clip, pick a category, "
+                "or add a focus hint.</span></div>")
 
     items = sorted(items, key=lambda x: x.get("confidence", 0) or 0, reverse=True)
     cards = []
@@ -220,13 +222,13 @@ def to_html(items: list) -> str:
         alt_html = ""
         if alts:
             chips = " ".join(f"<span class='alt'>{html.escape(str(a))}</span>" for a in alts[:3])
-            alt_html = f"<div class='alts'>Could also be: {chips}</div>"
+            alt_html = f"<div class='alts'><span class='eyebrow'>Also might be</span>{chips}</div>"
 
         cards.append(
             "<div class='card-item'>"
             f"<div class='row1'><span class='emoji'>{emoji}</span>"
-            f"<span class='iname'>{name}</span>"
-            f"<span class='badge'>{cat}</span>"
+            f"<span class='iname'>{name}</span></div>"
+            f"<div class='meta'><span class='badge'>{cat}</span>"
             f"<span class='conf {cc}'>{conf:.0%}</span>{chip}</div>"
             + (f"<div class='desc'>{desc}</div>" if desc else "")
             + alt_html + links
@@ -245,14 +247,16 @@ def to_html(items: list) -> str:
 def run(url: str, category: str = "Any", focus: str = "") -> str:
     url = (url or "").strip()
     if not url:
-        return "<div class='empty'>Paste a YouTube link first.</div>"
+        return "<div class='empty'><span class='eglyph'>🔗</span>Paste a YouTube link first.</div>"
     if "youtu" not in url:
-        return ("<div class='empty'>This build is <b>YouTube-only</b> for now. "
-                "Paste a youtube.com or youtu.be link.</div>")
+        return ("<div class='empty'><span class='eglyph'>🔗</span>This build is "
+                "<b>YouTube-only</b> for now.<br><span class='empty-sub'>"
+                "Paste a youtube.com or youtu.be link.</span></div>")
     try:
         return to_html(identify(url, category, focus))
     except Exception as e:
-        return f"<div class='empty err'>⚠️ Failed: {html.escape(str(e))}</div>"
+        return (f"<div class='empty err'><span class='eglyph'>⚠️</span>Something went wrong.<br>"
+                f"<span class='empty-sub'>{html.escape(str(e))}</span></div>")
 
 
 def embed_html(url: str) -> str:
@@ -277,65 +281,106 @@ HERO = """
 FOOT = ("<div id='foot'>Runs locally · powered by Gemini · "
         "low-confidence guesses can be wrong, so verify.</div>")
 
-EMPTY_RESULT = ("<div class='empty'>Your results will appear here.<br>"
+EMPTY_RESULT = ("<div class='empty'><span class='eglyph'>🔎</span>Your results will appear here.<br>"
                 "<span class='empty-sub'>Paste a link, pick what you're after, then hit Identify.</span></div>")
 
 CSS = """
-.gradio-container {max-width: 1100px !important; margin: 0 auto !important;}
-#hero {text-align:center; padding: 18px 0 2px;}
-#hero h1 {font-size: 2.1rem; font-weight: 800; margin:0; letter-spacing:-0.02em;}
-#hero h1 .logo {color:#e5322d;}
-#hero p {color: var(--body-text-color-subdued); margin:8px 0 0; font-size:1.02rem;}
-#go {font-weight:700; border-radius:12px; min-height:46px;}
+.gradio-container {max-width: 1080px !important; margin: 0 auto !important; overflow-x:hidden;}
+body {background: var(--background-fill-primary);}
+
+:root{
+  --accent:#e5322d; --txt2:#475569;
+  --okfg:#0f7b3e; --okbg:#e6f6ec; --ok:#16a34a;
+  --warnfg:#9a6700; --warnbg:#fdf3d6; --warn:#d99e00;
+  --badfg:#b42318; --badbg:#fde7e4; --bad:#e5484d;
+}
+.dark{
+  --txt2:#cbd5e1;
+  --okfg:#4ade80; --okbg:rgba(34,197,94,.16);
+  --warnfg:#fbbf24; --warnbg:rgba(217,158,0,.16);
+  --badfg:#f87171; --badbg:rgba(229,72,77,.16);
+}
+
+/* hero */
+#hero {text-align:center; padding: 22px 0 18px;}
+#hero h1 {font-size: clamp(1.6rem, 4.5vw, 2.35rem); font-weight: 800; margin:0; letter-spacing:-0.02em;}
+#hero h1 .logo {background:var(--accent); color:#fff; padding:2px 11px; border-radius:11px; font-size:.8em; margin-right:4px;}
+#hero p {color: var(--txt2); margin:12px auto 0; font-size:1.02rem; max-width:48ch; line-height:1.5;}
+
+/* input card */
+.inputcard {border:1px solid var(--border-color-primary); border-radius:18px; padding:18px;
+  background:var(--background-fill-primary); box-shadow:0 4px 20px rgba(2,6,23,.06);}
+.dark .inputcard {box-shadow:none;}
+#go {width:100%; font-weight:700; font-size:1.02rem; min-height:50px; border-radius:12px;
+  box-shadow:0 2px 8px rgba(229,50,45,.25);}
+#ex {width:100%; min-height:50px; border-radius:12px; font-weight:600;}
+
+/* main row spacing */
+.mainrow {margin-top:18px;}
+
 /* video */
 .video-wrap {position:relative; width:100%; aspect-ratio:16/9; border-radius:16px;
   overflow:hidden; background:#000; border:1px solid var(--border-color-primary);}
 .video-wrap iframe {position:absolute; inset:0; width:100%; height:100%; border:0;}
 .placeholder {display:flex; align-items:center; justify-content:center; height:100%;
   color:#9aa0aa; font-size:.95rem; text-align:center; padding:0 16px;}
+
 /* results */
-.results {display:flex; flex-direction:column; gap:12px;}
+.results {display:flex; flex-direction:column; gap:14px;}
 .rhead {font-weight:700; font-size:1.05rem; color:var(--body-text-color);}
-.card-item {border:1px solid var(--border-color-primary); border-radius:14px; padding:14px 16px;
-  background:var(--background-fill-primary); box-shadow:0 1px 3px rgba(0,0,0,.05);}
-.row1 {display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-.emoji {font-size:1.15rem;}
-.iname {font-weight:700; font-size:1.08rem; color:var(--body-text-color);}
-.badge {font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 9px;
+.card-item {border:1px solid var(--border-color-primary); border-radius:16px; padding:18px 20px;
+  background:var(--background-fill-primary); box-shadow:0 2px 10px rgba(2,6,23,.06);}
+.dark .card-item {box-shadow:inset 0 1px 0 rgba(255,255,255,.05); border-color:#3a4759;}
+.row1 {display:flex; align-items:center; gap:8px;}
+.emoji {font-size:1.2rem;}
+.iname {font-weight:800; font-size:1.22rem; letter-spacing:-0.01em; line-height:1.25; color:var(--body-text-color);}
+.meta {display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; margin-top:7px;}
+.badge {font-size:.74rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 9px;
   border-radius:999px; background:var(--background-fill-secondary);
-  border:1px solid var(--border-color-primary); color:var(--body-text-color-subdued);}
-.conf {font-weight:700; font-size:.82rem; padding:2px 9px; border-radius:999px;}
-.conf.high {color:#0f7b3e; background:#e6f6ec;}
-.conf.mid {color:#9a6700; background:#fdf3d6;}
-.conf.low {color:#b42318; background:#fde7e4;}
-.chip {font-size:.78rem; color:var(--body-text-color-subdued); background:var(--background-fill-secondary);
-  padding:2px 9px; border-radius:999px;}
-.desc {margin-top:9px; color:var(--body-text-color); line-height:1.5;}
-.alts {margin-top:9px; font-size:.85rem; color:var(--body-text-color-subdued);}
-.alt {display:inline-block; padding:1px 9px; border:1px dashed var(--border-color-primary);
-  border-radius:999px; margin:0 4px 4px 0;}
-.links {margin-top:11px; display:flex; gap:8px; flex-wrap:wrap;}
+  border:1px solid var(--border-color-primary); color:var(--txt2);}
+.conf {font-weight:800; font-size:.85rem; padding:3px 11px; border-radius:999px;}
+.conf.high {color:var(--okfg); background:var(--okbg);}
+.conf.mid {color:var(--warnfg); background:var(--warnbg);}
+.conf.low {color:var(--badfg); background:var(--badbg);}
+.chip {font-size:.78rem; color:var(--txt2); background:var(--background-fill-secondary);
+  padding:3px 9px; border-radius:999px;}
+.desc {margin-top:10px; color:var(--body-text-color); line-height:1.55;}
+.alts {margin-top:11px; font-size:.85rem; color:var(--txt2);}
+.eyebrow {font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--txt2); margin-right:6px;}
+.alt {display:inline-block; padding:2px 10px; border-radius:999px; background:var(--background-fill-secondary);
+  border:1px solid var(--border-color-primary); margin:0 4px 4px 0; font-size:.8rem; color:var(--body-text-color);}
+.links {margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;}
 .links .btn {text-decoration:none; font-size:.82rem; font-weight:600; padding:7px 13px;
   border-radius:10px; border:1px solid var(--border-color-primary);
   color:var(--body-text-color); background:var(--background-fill-secondary); transition:.15s;}
-.links .btn:hover {border-color:#e5322d; color:#e5322d;}
-.why {margin-top:11px; font-size:.82rem; color:var(--body-text-color-subdued);
-  border-top:1px dashed var(--border-color-primary); padding-top:9px;}
-.note {margin-top:2px; font-size:.8rem; color:var(--body-text-color-subdued);
-  display:flex; align-items:center; gap:4px; flex-wrap:wrap;}
-.dot {display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 4px 0 8px;}
-.dot.high{background:#16a34a;} .dot.mid{background:#d99e00;} .dot.low{background:#e5484d;}
-.empty {padding:40px 18px; text-align:center; color:var(--body-text-color-subdued);
-  border:1px dashed var(--border-color-primary); border-radius:14px; line-height:1.7;}
-.empty.err {border-style:solid; border-color:#f0b4ad; color:#b42318;}
-.empty-sub {font-size:.85rem; opacity:.8;}
-#foot {text-align:center; color:var(--body-text-color-subdued); font-size:.85rem; margin-top:16px;}
+.links .btn:hover {border-color:var(--accent); color:var(--accent);
+  background:rgba(229,50,45,.08); transform:translateY(-1px);}
+.why {margin-top:12px; font-size:.82rem; color:var(--txt2);
+  border-top:1px dashed var(--border-color-primary); padding-top:10px; line-height:1.5;}
+.note {margin-top:4px; font-size:.8rem; color:var(--txt2); display:flex; align-items:center; flex-wrap:wrap;}
+.dot {display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 4px 0 10px;}
+.dot.high{background:var(--ok);} .dot.mid{background:var(--warn);} .dot.low{background:var(--bad);}
+.empty {padding:44px 22px; text-align:center; color:var(--txt2);
+  border:1px solid var(--border-color-primary); border-radius:16px;
+  background:var(--background-fill-primary); line-height:1.7;}
+.empty .eglyph {display:block; font-size:2.2rem; margin-bottom:10px; opacity:.5;}
+.empty.err {border-color:#f0b4ad;}
+.empty-sub {font-size:.85rem;}
+#foot {text-align:center; color:var(--txt2); font-size:.85rem; margin-top:18px;}
 footer {display:none !important;}
 """
 
 THEME = gr.themes.Soft(
     primary_hue="red", neutral_hue="slate",
     font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+).set(
+    # Stop the red primary hue from painting field labels like the CTA / an error.
+    block_label_background_fill="*background_fill_primary",
+    block_label_background_fill_dark="*background_fill_primary",
+    block_label_text_color="*neutral_600",
+    block_label_text_color_dark="*neutral_300",
+    block_title_text_color="*neutral_700",
+    block_title_text_color_dark="*neutral_200",
 )
 
 
@@ -343,7 +388,7 @@ def build():
     """Construct the Gradio UI (kept separate from launch so it can be import-tested)."""
     with gr.Blocks(title="What's in this video?") as demo:
         gr.HTML(HERO)
-        with gr.Group():
+        with gr.Group(elem_classes=["inputcard"]):
             url = gr.Textbox(label="YouTube link", lines=1,
                              placeholder="https://www.youtube.com/watch?v=…")
             with gr.Row():
@@ -351,18 +396,22 @@ def build():
                                        label="What are you looking for?", scale=2)
                 focus = gr.Textbox(label="Anything specific? (optional)", scale=3,
                                    placeholder="e.g. the editing tool · the game")
-            go = gr.Button("🔍  Identify", variant="primary", elem_id="go")
-        with gr.Row(equal_height=True):
-            preview = gr.HTML(embed_html(""))
-            out = gr.HTML(EMPTY_RESULT)
-        gr.Examples(examples=[["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Song", ""]],
-                    inputs=[url, category, focus], label="Try an example")
+            with gr.Row():
+                go = gr.Button("🔍  Identify", variant="primary", elem_id="go", scale=3)
+                ex = gr.Button("Try an example", variant="secondary", elem_id="ex", scale=1)
+        with gr.Row(elem_classes=["mainrow"]):
+            with gr.Column(scale=5, min_width=300):
+                preview = gr.HTML(embed_html(""))
+            with gr.Column(scale=7, min_width=300):
+                out = gr.HTML(EMPTY_RESULT)
         gr.HTML(FOOT)
 
+        example = ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Song", "")
         url.change(embed_html, url, preview)            # live preview as you paste
         go.click(embed_html, url, preview)              # ensure preview on click too
         go.click(run, [url, category, focus], out)      # identify
         url.submit(run, [url, category, focus], out)    # Enter = identify
+        ex.click(lambda: example, outputs=[url, category, focus]).then(embed_html, url, preview)
     return demo
 
 
