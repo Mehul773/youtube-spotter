@@ -134,6 +134,12 @@
   }
   .player.empty svg{width:34px; height:34px; fill:none; stroke:var(--border-2); stroke-width:1.6}
   .player.empty span{font-size:13.5px; max-width:240px}
+  .preview-foot{margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12.5px}
+  .preview-foot .ptag{font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+    font-size:11px; border:1px solid var(--border); border-radius:99px; padding:2px 9px}
+  .preview-foot a{color:var(--accent); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px}
+  .preview-foot a:hover{text-decoration:underline}
+  .preview-foot .phint{flex-basis:100%; color:var(--faint); font-size:11.5px}
 
   /* ---------- result cards ---------- */
   .card{
@@ -234,6 +240,7 @@
           <span>Paste a YouTube link to preview it here</span>
         </div>
       </div>
+      <div class="preview-foot" id="previewFoot"></div>
     </section>
     <section class="pane right">
       <p class="pane-title">Results</p>
@@ -270,18 +277,26 @@
   const idOf = u => (String(u||"").match(/(?:v=|youtu\.be\/|\/shorts\/|\/live\/|\/embed\/)([A-Za-z0-9_-]{11})/)||[])[1];
   const isReel = u => /\/shorts\//.test(u||"");
 
+  const extLink = `<svg viewBox="0 0 24 24" width="11" height="11"><path d="M14 4h6v6M20 4l-9 9M19 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
   function updatePlayer(){
     const u = urlEl.value.trim(), id = idOf(u);
+    const foot = document.querySelector("#previewFoot");
     if(!id){
       stageEl.classList.remove("is-reel");
       playerEl.className = "player empty wide";
       playerEl.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg><span>Paste a YouTube link to preview it here</span>`;
+      foot.innerHTML = "";
       return;
     }
     const reel = isReel(u);
     stageEl.classList.toggle("is-reel", reel);
     playerEl.className = reel ? "player reel" : "player wide";
-    playerEl.innerHTML = `<iframe src="https://www.youtube.com/embed/${id}" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    playerEl.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    foot.innerHTML =
+      `<span class="ptag">${reel ? "Reel" : "Video"}</span>` +
+      `<a href="${u}" target="_blank" rel="noopener">Open on YouTube ${extLink}</a>` +
+      `<span class="phint">If the preview shows "unavailable", the owner disabled embedding — identification still works.</span>`;
   }
 
   function confColor(c){ return c>=0.75 ? "var(--ok)" : c>=0.45 ? "var(--warn)" : "var(--low)"; }
