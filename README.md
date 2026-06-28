@@ -1,68 +1,74 @@
-# What's in this video?
+# YouTube Spotter
 
-Paste a YouTube link. Get the movies, TV series, anime, games, and **tools / apps**
-the creator showed but never named — so you stop hunting through "comment and I'll DM
-you the link."
+You're watching a reel. A movie plays. A tool flashes on screen. Creator never names it.
+You comment asking. No reply.
 
-Runs 100% on your own computer. YouTube only (Instagram comes later). Free to run on
-Google's free tier.
+Paste the link. Get the name.
+
+---
+
+Identifies movies, TV series, anime, games, software tools, and songs shown in YouTube
+videos or Shorts — things creators show but never name.
 
 ## How it works
 
-The app sends the YouTube link to Google's Gemini AI. Gemini watches the video (frames
-and audio) and names what it sees, with a confidence score and the evidence it used. The
-app shows a clean list with ready-made search links. No video is downloaded — Gemini
-reads the link directly.
+Link → Gemini AI watches the video directly (no download) → name, confidence, evidence.
 
-You can narrow the search by picking a category (movie, game, tool, etc.), and if you add
-a free YouTube Data API key it also reads the description and top comments, where viewers
-often name the thing. Both are optional; it works without them.
+**The cost problem — and how it's solved:**
+Powerful Gemini model = accurate but ₹0.5–3/video.
+Cheap model alone = confidently wrong.
+Viewers almost always name the thing in the top comments.
+Cheapest model + comments = accurate + cheap.
 
-```
-your link → Gemini watches it → list of {name, type, confidence, why} → shown to you
-```
-
-## What you need
-
-- Python 3.10 or newer
-- A free Gemini API key: https://aistudio.google.com/apikey
+**₹0.04/reel. 100 videos ≈ ₹4.**
 
 ## Setup
 
-1. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-2. Add your key. Copy `.env.example` to `.env` and paste your key inside:
-   ```
-   GEMINI_API_KEY=your_key_here
-   ```
-   (Optional) For the comments + description booster, also add a free YouTube Data API key
-   to `.env` as `YOUTUBE_API_KEY=...` — enable "YouTube Data API v3" in Google Cloud Console.
+Needs Python 3.10+ and a free Gemini key → https://aistudio.google.com/apikey
 
-3. Run it:
-   ```
-   python app.py
-   ```
-4. Open the local link it prints (usually http://127.0.0.1:7860) and paste a YouTube link.
+```bash
+pip install -r requirements.txt
+```
 
-The page shows the video and results side by side — Shorts/reels get a vertical player,
-regular videos a wide one — with a light/dark toggle. It stays on your machine
-(`127.0.0.1`); to let other devices on your network in, change the host in `app.py`.
+Copy `.env.example` → `.env`:
 
-## Good to know (honest limits)
+```
+GEMINI_API_KEY=your_key_here
+```
 
-- Best on popular movies / shows / anime / games and well-known tools. Rare or obscure
-  things can be wrong.
-- It shows a confidence score. Low confidence can be wrong — treat it as a hint, not truth.
-- Some videos (private, age-restricted, members-only) can't be read.
-- Each lookup costs a fraction of a rupee; the free tier covers normal hobby use.
+**Optional booster** — adds video description + top comments for better accuracy:
 
-## Later ideas
+```
+YOUTUBE_API_KEY=your_key_here
+```
 
-- Instagram reels support (needs a downloader + login).
-- A "copy all" button and a history of past lookups.
+Enable "YouTube Data API v3" in Google Cloud Console.
+
+```bash
+python app.py
+```
+
+Open → http://127.0.0.1:7860
+
+## What you get
+
+Video player + result cards, side by side. Shorts load vertical (9:16), regular videos
+load wide. Filter by category. Light/dark toggle.
+
+Some clips block iframe embedding — identification still works. Gemini reads server-side,
+not via the embed.
+
+## Limits
+
+- Popular titles: accurate. Obscure: uncertain.
+- Low confidence = treat as hint, not fact.
+- Private, age-restricted, members-only videos can't be read.
+
+## Roadmap
+
+- Instagram reels (needs yt-dlp + login)
+- Copy-all button + lookup history
 
 ## License
 
-MIT — hobby project, use freely.
+MIT
