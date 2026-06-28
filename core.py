@@ -20,47 +20,38 @@ except ImportError:
 from google import genai
 from google.genai import types
 
-# flash = good accuracy. For lowest cost (less accurate) use "gemini-2.5-flash-lite".
-MODEL = "gemini-2.5-flash"
+# flash-lite = cheapest. Accuracy is held up by the description + top-comments context
+# (which usually names the thing). Bump to "gemini-2.5-flash" only if you need more visual power.
+MODEL = "gemini-2.5-flash-lite"
 
 # "Any" first (default), then the specific filters the UI offers.
 CATEGORIES = ["Any", "Movie", "TV series", "Anime", "Video game",
               "Software / app / tool", "Car / vehicle", "Product", "Song", "Place / location"]
 
-PROMPT = """You are watching a YouTube video. Creators often SHOW or TALK ABOUT things
-without naming them, and the viewer wants the name.
+PROMPT = """You are watching a YouTube video. Creators often show or talk about things
+without naming them; the viewer wants the name.
 
-Identify every notable thing a viewer might want to name: a movie, TV series, anime,
-documentary, video game, software tool / app / website / AI product, a gadget or
-product, or a song that is playing.
+Identify the notable things a viewer would want named — a movie, TV series, anime, video
+game, software tool / app / website, a product, or a song playing. Return AT MOST 5, most
+notable first.
 
-CRITICAL accuracy rules — read carefully:
-- Do NOT identify from an actor's face alone. The same actor appears in many films, and
-  many movies share similar scenes (car chases, stunts, fights, running scenes).
-- Anchor your answer on DISTINCTIVE, verifiable evidence: a visible title card or logo,
-  on-screen text or captions, a unique location, a specific plot beat, or the video's own
-  title / caption.
-- If no definitive title or credit is visible and you are inferring, set "confidence" to
-  at most 0.6 and put up to 2 other plausible titles in "alternatives".
-- Prefer admitting uncertainty over a confident wrong guess.
+Accuracy rules:
+- Don't identify from an actor's face alone — actors appear in many films, and many films
+  share similar scenes (chases, stunts, fights).
+- Anchor on DISTINCTIVE evidence: a visible title / logo, on-screen text or caption, a
+  unique location, a specific plot beat, or the video's own title.
+- If EXTRA CONTEXT (description / top comments) is given below, use it as a strong hint —
+  viewers often name the thing there — but verify against what you see and hear; if a comment
+  named it, say so in "evidence".
+- If you can't confirm a definitive title, set confidence <= 0.6 and add up to 2
+  "alternatives". Never invent a name.
 
-For EACH thing return:
-- "name": your best identification (the real title / product name)
-- "category": one of movie | series | anime | game | tool | app | website | product | song | other | unknown
-- "what_it_is": one short line on what it is or does
-- "confidence": a number 0.0 to 1.0
-- "timestamp": rough time it appears like "1:23", or "" if unclear
-- "evidence": the exact on-screen text, logo, caption, or spoken words you used
-- "alternatives": array of other possible names, or []
+For each item, JSON keys: "name", "category"
+(movie|series|anime|game|tool|app|website|product|song|other|unknown), "what_it_is"
+(<=12 words), "confidence" (0-1), "timestamp" ("m:ss" or ""), "evidence" (<=20 words),
+"alternatives" (<=2 names, or []).
 
-Rules:
-- Only include things actually worth identifying. Skip irrelevant background.
-- If you are NOT reasonably sure, use "category":"unknown" and a low confidence. Never invent.
-- Keep every field concise; keep "evidence" under 25 words.
-- If EXTRA CONTEXT (video description / top comments) is given below, treat it as a strong
-  hint — viewers often name the thing in comments — but verify it against what you see and
-  hear. If a comment named it, say so in "evidence".
-- Return STRICT JSON only: {"items": [ ... ]}. No text outside the JSON.
+Return STRICT JSON only: {"items": [ ... ]}. No text outside the JSON.
 """
 
 _client = None
@@ -107,7 +98,7 @@ def search_urls(name: str):
             "youtube": f"https://www.youtube.com/results?search_query={q}"}
 
 
-def youtube_context(url: str, max_comments: int = 15) -> str:
+def youtube_context(url: str, max_comments: int = 10) -> str:
     """Optional booster: if YOUTUBE_API_KEY is set, fetch the description + top comments.
     Viewers usually name the movie/show/game/tool in the comments. Returns "" if there is
     no key, no video id, or comments are disabled — the app still works on video alone."""
@@ -132,13 +123,13 @@ def youtube_context(url: str, max_comments: int = 15) -> str:
         if snip.get("title"):
             parts.append("TITLE: " + snip["title"])
         if snip.get("description"):
-            parts.append("DESCRIPTION:\n" + snip["description"][:1500])
+            parts.append("DESCRIPTION:\n" + snip["description"][:800])
     except Exception:
         pass
     try:
         data = _get("commentThreads", {"part": "snippet", "videoId": vid, "order": "relevance",
                                        "maxResults": max_comments, "textFormat": "plainText"})
-        comments = [t["snippet"]["topLevelComment"]["snippet"]["textDisplay"][:300]
+        comments = [t["snippet"]["topLevelComment"]["snippet"]["textDisplay"][:200]
                     for t in data.get("items", [])]
         if comments:
             parts.append("TOP COMMENTS:\n- " + "\n- ".join(comments))
@@ -165,7 +156,7 @@ def identify(url: str, category: str = "Any", focus: str = "") -> list:
     contents = types.Content(parts=[
         types.Part(
             file_data=types.FileData(file_uri=url),
-            video_metadata=types.VideoMetadata(fps=2),
+            video_metadata=types.VideoMetadata(fps=1),          # 1 fps = half the video tokens
         ),
         types.Part(text=prompt),
     ])
@@ -174,8 +165,9 @@ def identify(url: str, category: str = "Any", focus: str = "") -> list:
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-            max_output_tokens=4096,
+            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,  # ~4x fewer video tokens
+            thinking_config=types.ThinkingConfig(thinking_budget=0),      # no thinking = cheaper
+            max_output_tokens=2048,
         ),
     )
     items = parse_json(resp.text).get("items", [])
