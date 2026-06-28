@@ -14,6 +14,10 @@ and audio) and names what it sees, with a confidence score and the evidence it u
 app shows a clean list with ready-made search links. No video is downloaded — Gemini
 reads the link directly.
 
+You can narrow the search by picking a category (movie, game, tool, etc.), and if you add
+a free YouTube Data API key it also reads the description and top comments, where viewers
+often name the thing. Both are optional; it works without them.
+
 ```
 your link → Gemini watches it → list of {name, type, confidence, why} → shown to you
 ```
@@ -33,6 +37,9 @@ your link → Gemini watches it → list of {name, type, confidence, why} → sh
    ```
    GEMINI_API_KEY=your_key_here
    ```
+   (Optional) For the comments + description booster, also add a free YouTube Data API key
+   to `.env` as `YOUTUBE_API_KEY=...` — enable "YouTube Data API v3" in Google Cloud Console.
+
 3. Run it:
    ```
    python app.py
@@ -53,7 +60,6 @@ Want a temporary public link to show a friend? Change `demo.launch()` to
 ## Later ideas
 
 - Instagram reels support (needs a downloader + login).
-- Pull the video description and pinned comment as extra hints.
 - A "copy all" button and a history of past lookups.
 
 ## License

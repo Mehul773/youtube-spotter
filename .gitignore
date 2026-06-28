@@ -10,3 +10,4 @@ venv/
 # scratch / downloads
 *.mp4
 clip.*
+.gradio/

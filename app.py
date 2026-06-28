@@ -49,6 +49,9 @@ Rules:
 - Only include things actually worth identifying. Skip irrelevant background.
 - If you are NOT reasonably sure, set "category":"unknown" and a low confidence.
   Never invent a name to look confident.
+- If EXTRA CONTEXT (video description / top comments) is given below, treat it as a strong
+  hint — viewers often name the thing in comments — but verify it against what you see and
+  hear. If a comment named it, say so in "evidence".
 - Return STRICT JSON only: {"items": [ ... ]}. No text outside the JSON.
 """
 
@@ -81,11 +84,69 @@ def parse_json(text: str) -> dict:
         raise
 
 
-def identify(url: str, focus: str = "") -> list:
+CATEGORIES = ["Any", "Movie", "TV series", "Anime", "Video game",
+              "Software / app / tool", "Car / vehicle", "Product", "Song", "Place / location"]
+
+
+def video_id(url: str):
+    """Pull the 11-char YouTube video id out of any common YouTube URL shape."""
+    m = re.search(r"(?:v=|youtu\.be/|/shorts/|/live/|/embed/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else None
+
+
+def youtube_context(url: str, max_comments: int = 15) -> str:
+    """Optional booster: if YOUTUBE_API_KEY is set, fetch the description + top comments.
+    Viewers usually name the movie/show/game/tool in the comments. Returns "" if there is
+    no key, no video id, or comments are disabled — the app still works on video alone."""
+    key = os.environ.get("YOUTUBE_API_KEY")
+    vid = video_id(url)
+    if not key or not vid:
+        return ""
+
+    import urllib.request
+    import urllib.parse
+
+    def _get(endpoint, params):
+        params["key"] = key
+        u = f"https://www.googleapis.com/youtube/v3/{endpoint}?" + urllib.parse.urlencode(params)
+        with urllib.request.urlopen(u, timeout=15) as r:
+            return json.load(r)
+
+    parts = []
+    try:  # title + description
+        items = _get("videos", {"part": "snippet", "id": vid}).get("items") or [{}]
+        snip = items[0].get("snippet", {})
+        if snip.get("title"):
+            parts.append("TITLE: " + snip["title"])
+        if snip.get("description"):
+            parts.append("DESCRIPTION:\n" + snip["description"][:1500])
+    except Exception:
+        pass
+    try:  # top comments, ranked by relevance
+        data = _get("commentThreads", {"part": "snippet", "videoId": vid, "order": "relevance",
+                                       "maxResults": max_comments, "textFormat": "plainText"})
+        comments = [t["snippet"]["topLevelComment"]["snippet"]["textDisplay"][:300]
+                    for t in data.get("items", [])]
+        if comments:
+            parts.append("TOP COMMENTS:\n- " + "\n- ".join(comments))
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def identify(url: str, category: str = "Any", focus: str = "") -> list:
     """Hand the YouTube link to Gemini and get back a list of identified items."""
     prompt = PROMPT
+    if category and category != "Any":
+        prompt += (f'\n\nThe viewer is looking ONLY for a {category}. Prioritize the '
+                   f'{category}; you may ignore unrelated categories.')
     if focus.strip():
         prompt += f'\nThe viewer specifically wants: "{focus.strip()}". Prioritize that.'
+
+    context = youtube_context(url)
+    if context:
+        prompt += ("\n\nEXTRA CONTEXT (video description and top comments — viewers often "
+                   "name the thing here):\n" + context)
 
     contents = types.Content(parts=[
         types.Part(
@@ -142,14 +203,14 @@ def to_markdown(items: list) -> str:
     return "\n".join(out)
 
 
-def run(url: str, focus: str = "") -> str:
+def run(url: str, category: str = "Any", focus: str = "") -> str:
     url = (url or "").strip()
     if not url:
         return "Paste a YouTube link first."
     if "youtu" not in url:
         return "This build is **YouTube-only** for now. Paste a youtube.com or youtu.be link."
     try:
-        return to_markdown(identify(url, focus))
+        return to_markdown(identify(url, category, focus))
     except Exception as e:
         return f"⚠️ Failed: {e}"
 
@@ -160,7 +221,9 @@ def main():
         inputs=[
             gr.Textbox(label="YouTube link",
                        placeholder="https://www.youtube.com/watch?v=..."),
-            gr.Textbox(label="Looking for something specific? (optional)",
+            gr.Dropdown(choices=CATEGORIES, value="Any",
+                        label="What are you looking for? (narrows the search)"),
+            gr.Textbox(label="Anything specific? (optional)",
                        placeholder="e.g. the editing tool · the game · the song"),
         ],
         outputs=gr.Markdown(label="What's in it"),
