@@ -46,8 +46,9 @@ your link → Gemini watches it → list of {name, type, confidence, why} → sh
    ```
 4. Open the local link it prints (usually http://127.0.0.1:7860) and paste a YouTube link.
 
-Want a temporary public link to show a friend? Change `demo.launch()` to
-`demo.launch(share=True)` in `app.py`.
+The page shows the video and results side by side — Shorts/reels get a vertical player,
+regular videos a wide one — with a light/dark toggle. It stays on your machine
+(`127.0.0.1`); to let other devices on your network in, change the host in `app.py`.
 
 ## Good to know (honest limits)
 

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spotter — what's in this video?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f6f4; --surface:#ffffff; --surface-2:#f1f1ee; --inset:#fbfbfa;
+    --ink:#16161a; --muted:#5b5f66; --faint:#8a8f98;
+    --border:#e7e6e1; --border-2:#dededa;
+    --accent:#2f6fed; --accent-ink:#2456c8; --on-accent:#ffffff;
+    --ring:rgba(47,111,237,.28);
+    --ok:#1a7f45; --ok-bg:rgba(26,127,69,.12);
+    --warn:#b4690e; --warn-bg:rgba(180,105,14,.12);
+    --low:#6c7178; --low-bg:rgba(108,113,120,.14);
+    --shadow:0 1px 2px rgba(16,18,22,.04), 0 8px 24px rgba(16,18,22,.06);
+    --radius:16px;
+  }
+  html[data-theme="dark"]{
+    --bg:#0b0c0e; --surface:#141619; --surface-2:#1b1e22; --inset:#101216;
+    --ink:#eceef0; --muted:#9aa0a8; --faint:#6b717a;
+    --border:#23262d; --border-2:#2c3038;
+    --accent:#5a82f0; --accent-ink:#7396f4; --on-accent:#0b0c0e;
+    --ring:rgba(90,130,240,.36);
+    --ok:#4ade80; --ok-bg:rgba(34,197,94,.15);
+    --warn:#fbbf24; --warn-bg:rgba(217,158,0,.16);
+    --low:#9aa0a8; --low-bg:rgba(154,160,168,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  a{color:inherit}
+  ::selection{background:var(--ring)}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 24px; border-bottom:1px solid var(--border); flex:0 0 auto;
+  }
+  .brand{display:flex; align-items:center; gap:11px}
+  .mark{
+    width:30px; height:30px; border-radius:9px; background:var(--accent);
+    display:grid; place-items:center; box-shadow:0 2px 8px var(--ring);
+  }
+  .mark svg{width:15px; height:15px; fill:var(--on-accent)}
+  .brand .name{font-weight:700; letter-spacing:-0.02em; font-size:16px}
+  .brand .name small{font-weight:500; color:var(--faint); margin-left:8px; font-size:12.5px; letter-spacing:0}
+  .icon-btn{
+    width:36px; height:36px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface); color:var(--muted); cursor:pointer; display:grid; place-items:center;
+    transition:.15s;
+  }
+  .icon-btn:hover{color:var(--ink); border-color:var(--border-2)}
+  .icon-btn svg{width:17px; height:17px; fill:currentColor}
+
+  /* ---------- composer ---------- */
+  .composer{flex:0 0 auto; padding:20px 24px 16px; max-width:1180px; width:100%; margin:0 auto}
+  .searchbar{
+    display:flex; align-items:center; gap:10px; background:var(--surface);
+    border:1px solid var(--border); border-radius:14px; padding:7px 8px 7px 14px;
+    box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s;
+  }
+  .searchbar:focus-within{border-color:var(--accent); box-shadow:0 0 0 4px var(--ring)}
+  .searchbar .glass{width:18px; height:18px; fill:var(--faint); flex:0 0 auto}
+  .searchbar input{
+    flex:1; border:0; outline:0; background:transparent; color:var(--ink);
+    font:inherit; font-size:15.5px; padding:8px 2px;
+  }
+  .searchbar input::placeholder{color:var(--faint)}
+  .btn{
+    border:0; cursor:pointer; font:inherit; font-weight:600; border-radius:10px;
+    transition:transform .08s, background .15s, border-color .15s, color .15s;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{
+    background:var(--accent); color:var(--on-accent); padding:11px 20px; font-size:14.5px;
+    display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px var(--ring);
+  }
+  .btn-primary:hover{background:var(--accent-ink)}
+  .btn-primary svg{width:15px; height:15px; fill:currentColor}
+  .controls{display:flex; align-items:center; gap:12px; margin-top:11px; flex-wrap:wrap}
+  .ctrl{display:flex; align-items:center; gap:8px}
+  .ctrl label{font-size:12.5px; color:var(--faint); font-weight:500}
+  select, .focus-input{
+    border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    font:inherit; font-size:13.5px; border-radius:9px; padding:8px 11px; outline:0; transition:.15s;
+  }
+  select:focus, .focus-input:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--ring)}
+  .focus-input{min-width:210px}
+  .focus-input::placeholder{color:var(--faint)}
+  .ghost{
+    background:transparent; color:var(--muted); border:1px solid transparent;
+    padding:8px 10px; font-size:13px; border-radius:9px; margin-left:auto;
+  }
+  .ghost:hover{color:var(--accent); background:var(--surface-2)}
+
+  /* ---------- stage ---------- */
+  .stage{
+    flex:1; min-height:0; max-width:1180px; width:100%; margin:0 auto;
+    padding:6px 24px 24px; display:grid; gap:22px;
+    grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);
+  }
+  .stage.is-reel{grid-template-columns:minmax(300px,360px) minmax(0,1fr)}
+  .pane{min-height:0; display:flex; flex-direction:column}
+  .pane-title{font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--faint); margin:0 2px 10px}
+  .right{min-height:0}
+  .results{overflow-y:auto; padding-right:6px; margin-right:-6px; min-height:0}
+  .results::-webkit-scrollbar{width:9px}
+  .results::-webkit-scrollbar-thumb{background:var(--border-2); border-radius:9px; border:2px solid var(--bg)}
+
+  /* player */
+  .viewport{flex:1; min-height:0; display:flex; align-items:center; justify-content:center}
+  .player{
+    border-radius:var(--radius); overflow:hidden; background:#000;
+    border:1px solid var(--border); box-shadow:var(--shadow); max-width:100%; max-height:100%;
+  }
+  .player.wide{width:100%; aspect-ratio:16/9}
+  .player.reel{height:100%; aspect-ratio:9/16}
+  .player iframe{width:100%; height:100%; border:0; display:block}
+  .player.empty{
+    background:var(--inset); display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; color:var(--faint); text-align:center; padding:24px;
+  }
+  .player.empty svg{width:34px; height:34px; fill:none; stroke:var(--border-2); stroke-width:1.6}
+  .player.empty span{font-size:13.5px; max-width:240px}
+  .preview-foot{margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12.5px}
+  .preview-foot .ptag{font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+    font-size:11px; border:1px solid var(--border); border-radius:99px; padding:2px 9px}
+  .preview-foot a{color:var(--accent); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px}
+  .preview-foot a:hover{text-decoration:underline}
+  .preview-foot .phint{flex-basis:100%; color:var(--faint); font-size:11.5px}
+
+  /* ---------- result cards ---------- */
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:16px 18px; margin-bottom:12px; transition:border-color .15s, box-shadow .15s, transform .12s;
+  }
+  .card:hover{border-color:var(--border-2); box-shadow:var(--shadow)}
+  .card .head{display:flex; align-items:center; gap:10px}
+  .cat-dot{width:9px; height:9px; border-radius:50%; flex:0 0 auto}
+  .card .name{font-size:17px; font-weight:700; letter-spacing:-0.01em; margin:0; flex:1; min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .conf{display:flex; align-items:center; gap:7px; flex:0 0 auto}
+  .conf .bar{width:46px; height:5px; border-radius:99px; background:var(--surface-2); overflow:hidden}
+  .conf .bar i{display:block; height:100%; border-radius:99px}
+  .conf .pct{font-size:12px; font-weight:700; color:var(--muted); min-width:30px; text-align:right}
+  .card .sub{display:flex; align-items:center; gap:8px; margin-top:7px; font-size:12.5px; color:var(--faint)}
+  .card .sub .ctag{color:var(--muted); font-weight:600; text-transform:capitalize}
+  .card .desc{margin:11px 0 0; color:var(--ink); font-size:14px; line-height:1.55}
+  .card .alts{margin-top:11px; font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+  .card .alts .eyebrow{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint)}
+  .chip{display:inline-block; padding:2px 9px; border-radius:99px; background:var(--surface-2);
+    border:1px solid var(--border); font-size:12px; color:var(--ink)}
+  .card .actions{display:flex; gap:8px; margin-top:13px}
+  .lnk{
+    display:inline-flex; align-items:center; gap:5px; text-decoration:none; font-size:12.5px; font-weight:600;
+    padding:6px 11px; border-radius:8px; border:1px solid var(--border); color:var(--muted);
+    background:var(--surface); transition:.15s;
+  }
+  .lnk:hover{color:var(--accent); border-color:var(--accent); background:var(--surface-2)}
+  .lnk svg{width:11px; height:11px; fill:currentColor; opacity:.8}
+  .card .why{margin:13px 0 0; padding-top:11px; border-top:1px solid var(--border);
+    font-size:12.5px; color:var(--muted); line-height:1.5}
+  .card .why b{color:var(--faint); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.04em; margin-right:6px}
+
+  .legend{display:flex; align-items:center; gap:14px; margin:4px 2px 8px; font-size:12px; color:var(--faint)}
+  .legend i{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle}
+
+  /* states */
+  .state{
+    border:1px dashed var(--border-2); border-radius:14px; padding:40px 24px; text-align:center; color:var(--faint);
+    background:var(--inset);
+  }
+  .state svg{width:30px; height:30px; stroke:var(--border-2); fill:none; stroke-width:1.6; margin-bottom:10px}
+  .state .t{color:var(--muted); font-weight:600; font-size:14.5px}
+  .state .s{font-size:13px; margin-top:4px}
+  .state.err{border-style:solid; border-color:var(--warn); color:var(--warn)}
+
+  .spinner{width:26px; height:26px; border-radius:50%; border:2.5px solid var(--border-2);
+    border-top-color:var(--accent); animation:spin .7s linear infinite; margin:0 auto 12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* responsive: stack + allow scroll on narrow screens */
+  @media (max-width:840px){
+    body{overflow:auto}
+    .stage{grid-template-columns:1fr; padding-bottom:32px}
+    .stage.is-reel{grid-template-columns:1fr}
+    .results{overflow:visible}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+      <span class="name">Spotter <small>identify what's in a video</small></span>
+    </div>
+    <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme"></button>
+  </header>
+
+  <section class="composer">
+    <div class="searchbar">
+      <svg class="glass" viewBox="0 0 24 24"><path d="M21 21l-4.3-4.3M11 19a8 8 0 110-16 8 8 0 010 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="url" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Paste a YouTube video or Shorts link…">
+      <button class="btn btn-primary" id="go">
+        <svg viewBox="0 0 24 24"><path d="M13 5l7 7-7 7M4 12h15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Identify
+      </button>
+    </div>
+    <div class="controls">
+      <div class="ctrl"><label for="category">Looking for</label>
+        <select id="category"></select>
+      </div>
+      <div class="ctrl"><label for="focus">Focus</label>
+        <input id="focus" class="focus-input" type="text" placeholder="optional — e.g. the editing tool">
+      </div>
+      <button class="btn ghost" id="example">Try an example</button>
+    </div>
+  </section>
+
+  <main class="stage" id="stage">
+    <section class="pane">
+      <p class="pane-title">Preview</p>
+      <div class="viewport">
+        <div class="player empty wide" id="player">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+          <span>Paste a YouTube link to preview it here</span>
+        </div>
+      </div>
+      <div class="preview-foot" id="previewFoot"></div>
+    </section>
+    <section class="pane right">
+      <p class="pane-title">Results</p>
+      <div class="results" id="results">
+        <div class="state">
+          <svg viewBox="0 0 24 24"><path d="M21 21l-4.3-4.3M11 19a8 8 0 110-16 8 8 0 010 16z"/></svg>
+          <div class="t">Nothing identified yet</div>
+          <div class="s">Paste a link, pick what you're after, then hit Identify.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+  const CATEGORIES = {{ categories|tojson }};
+  const EXAMPLE = {url:"https://www.youtube.com/watch?v=dQw4w9WgXcQ", category:"Song", focus:""};
+
+  const $ = s => document.querySelector(s);
+  const urlEl = $("#url"), catEl = $("#category"), focusEl = $("#focus"),
+        goEl = $("#go"), playerEl = $("#player"), resultsEl = $("#results"),
+        stageEl = $("#stage"), exEl = $("#example"), themeBtn = $("#themeToggle");
+
+  // categories
+  CATEGORIES.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; catEl.appendChild(o); });
+
+  // category accent dots (muted, professional — no red brand)
+  const CAT_COLOR = {movie:"#6366f1", series:"#0ea5e9", anime:"#d946a6", game:"#22c55e",
+    tool:"#f59e0b", app:"#14b8a6", website:"#8b5cf6", product:"#64748b", song:"#a855f7",
+    place:"#0d9488", other:"#64748b", unknown:"#94a3b8"};
+
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  const idOf = u => (String(u||"").match(/(?:v=|youtu\.be\/|\/shorts\/|\/live\/|\/embed\/)([A-Za-z0-9_-]{11})/)||[])[1];
+  const isReel = u => /\/shorts\//.test(u||"");
+
+  const extLink = `<svg viewBox="0 0 24 24" width="11" height="11"><path d="M14 4h6v6M20 4l-9 9M19 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+  function updatePlayer(){
+    const u = urlEl.value.trim(), id = idOf(u);
+    const foot = document.querySelector("#previewFoot");
+    if(!id){
+      stageEl.classList.remove("is-reel");
+      playerEl.className = "player empty wide";
+      playerEl.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg><span>Paste a YouTube link to preview it here</span>`;
+      foot.innerHTML = "";
+      return;
+    }
+    const reel = isReel(u);
+    stageEl.classList.toggle("is-reel", reel);
+    playerEl.className = reel ? "player reel" : "player wide";
+    playerEl.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    foot.innerHTML =
+      `<span class="ptag">${reel ? "Reel" : "Video"}</span>` +
+      `<a href="${u}" target="_blank" rel="noopener">Open on YouTube ${extLink}</a>` +
+      `<span class="phint">If the preview shows "unavailable", the owner disabled embedding — identification still works.</span>`;
+  }
+
+  function confColor(c){ return c>=0.75 ? "var(--ok)" : c>=0.45 ? "var(--warn)" : "var(--low)"; }
+
+  function card(it){
+    const name = esc(it.name || "Unknown");
+    const cat = String(it.category || "unknown").toLowerCase();
+    const conf = Number(it.confidence || 0);
+    const dot = CAT_COLOR[cat] || CAT_COLOR.other;
+    const ts = it.timestamp ? `<span>·</span><span>${esc(it.timestamp)}</span>` : "";
+    const desc = it.what_it_is ? `<p class="desc">${esc(it.what_it_is)}</p>` : "";
+    let alts = "";
+    if(Array.isArray(it.alternatives) && it.alternatives.length){
+      alts = `<div class="alts"><span class="eyebrow">Also might be</span>` +
+        it.alternatives.slice(0,3).map(a=>`<span class="chip">${esc(a)}</span>`).join("") + `</div>`;
+    }
+    let actions = "";
+    if(it.links){
+      const ext = `<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M19 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      actions = `<div class="actions">
+        <a class="lnk" href="${it.links.google}" target="_blank" rel="noopener">Google ${ext}</a>
+        <a class="lnk" href="${it.links.youtube}" target="_blank" rel="noopener">YouTube ${ext}</a></div>`;
+    }
+    const why = it.evidence ? `<p class="why"><b>Why</b>${esc(it.evidence)}</p>` : "";
+    return `<article class="card">
+      <div class="head">
+        <span class="cat-dot" style="background:${dot}"></span>
+        <h3 class="name" title="${name}">${name}</h3>
+        <span class="conf"><span class="bar"><i style="width:${Math.round(conf*100)}%;background:${confColor(conf)}"></i></span>
+        <span class="pct">${Math.round(conf*100)}%</span></span>
+      </div>
+      <div class="sub"><span class="ctag">${esc(cat)}</span>${ts}</div>
+      ${desc}${alts}${actions}${why}
+    </article>`;
+  }
+
+  function render(data){
+    if(data.error){
+      resultsEl.innerHTML = `<div class="state err">${esc(data.error)}</div>`; return;
+    }
+    const items = data.items || [];
+    if(!items.length){
+      resultsEl.innerHTML = `<div class="state">
+        <svg viewBox="0 0 24 24"><path d="M21 21l-4.3-4.3M11 19a8 8 0 110-16 8 8 0 010 16z"/></svg>
+        <div class="t">Nothing identified confidently</div>
+        <div class="s">Try a clearer or longer clip, pick a category, or add a focus hint.</div></div>`;
+      return;
+    }
+    const legend = `<div class="legend">
+      <span><i style="background:var(--ok)"></i>sure</span>
+      <span><i style="background:var(--warn)"></i>maybe</span>
+      <span><i style="background:var(--low)"></i>guess</span>
+      <span style="margin-left:auto">low confidence can be wrong — verify</span></div>`;
+    resultsEl.innerHTML = legend + items.map(card).join("");
+    resultsEl.scrollTop = 0;
+  }
+
+  async function identify(){
+    const u = urlEl.value.trim();
+    if(!u){ render({error:"Paste a YouTube link first."}); return; }
+    updatePlayer();
+    goEl.disabled = true;
+    resultsEl.innerHTML = `<div class="state"><div class="spinner"></div>
+      <div class="t">Watching the video…</div><div class="s">This takes a few seconds.</div></div>`;
+    try{
+      const r = await fetch("/api/identify", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({url:u, category:catEl.value, focus:focusEl.value})
+      });
+      render(await r.json());
+    }catch(e){ render({error:String(e)}); }
+    finally{ goEl.disabled = false; }
+  }
+
+  // events
+  let t; urlEl.addEventListener("input", ()=>{ clearTimeout(t); t=setTimeout(updatePlayer, 250); });
+  goEl.addEventListener("click", identify);
+  urlEl.addEventListener("keydown", e=>{ if(e.key==="Enter") identify(); });
+  focusEl.addEventListener("keydown", e=>{ if(e.key==="Enter") identify(); });
+  exEl.addEventListener("click", ()=>{ urlEl.value=EXAMPLE.url; catEl.value=EXAMPLE.category; focusEl.value=EXAMPLE.focus; updatePlayer(); });
+
+  // theme
+  const SUN = `<svg viewBox="0 0 24 24"><path d="M12 17a5 5 0 100-10 5 5 0 000 10zM12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+  const MOON = `<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" fill="currentColor"/></svg>`;
+  function applyTheme(mode){
+    document.documentElement.setAttribute("data-theme", mode);
+    themeBtn.innerHTML = mode==="dark" ? SUN : MOON;
+    try{ localStorage.setItem("spotter-theme", mode); }catch(e){}
+  }
+  themeBtn.addEventListener("click", ()=>{
+    applyTheme(document.documentElement.getAttribute("data-theme")==="dark" ? "light" : "dark");
+  });
+  (function initTheme(){
+    let m; try{ m = localStorage.getItem("spotter-theme"); }catch(e){}
+    if(!m) m = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    applyTheme(m);
+  })();
+</script>
+</body>
+</html>
