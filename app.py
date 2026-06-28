@@ -179,7 +179,7 @@ def search_links(name: str) -> str:
 def to_markdown(items: list) -> str:
     if not items:
         return ("**Nothing identified confidently.** Try a clearer or longer video, "
-                "or tell it what you're looking for in the second box.")
+                "or pick a category / add a focus hint to narrow it down.")
 
     items = sorted(items, key=lambda x: x.get("confidence", 0) or 0, reverse=True)
     out = [f"### Found {len(items)} thing(s) in this video\n"]
@@ -215,24 +215,83 @@ def run(url: str, category: str = "Any", focus: str = "") -> str:
         return f"⚠️ Failed: {e}"
 
 
+def embed_html(url: str) -> str:
+    """Build the responsive YouTube embed for the preview panel (or a placeholder)."""
+    vid = video_id(url or "")
+    if not vid:
+        return ("<div class='video-wrap'><div class='placeholder'>"
+                "▶ Paste a YouTube link to preview it here</div></div>")
+    src = f"https://www.youtube.com/embed/{vid}"
+    return ("<div class='video-wrap'><iframe src='" + src + "' "
+            "allow='accelerometer; clipboard-write; encrypted-media; picture-in-picture' "
+            "allowfullscreen></iframe></div>")
+
+
+HERO = """
+<div id="hero">
+  <h1>🎬 What's in this video?</h1>
+  <p>Paste a YouTube link and find the movie, series, anime, game, or tool the creator never named.</p>
+</div>
+"""
+
+FOOT = ("<div id='foot'>Runs locally · powered by Gemini · "
+        "low-confidence guesses can be wrong, so verify.</div>")
+
+CSS = """
+.gradio-container {max-width: 1080px !important; margin: 0 auto !important;}
+#hero {text-align:center; padding: 14px 0 4px;}
+#hero h1 {font-size: 2rem; font-weight: 800; margin:0; letter-spacing:-0.02em;}
+#hero p {color: var(--body-text-color-subdued); margin:6px 0 0;}
+#go {font-weight:600; border-radius:12px;}
+.video-wrap {position:relative; width:100%; aspect-ratio:16/9; border-radius:14px;
+  overflow:hidden; background:#000; border:1px solid var(--border-color-primary);}
+.video-wrap iframe {position:absolute; inset:0; width:100%; height:100%; border:0;}
+.placeholder {display:flex; align-items:center; justify-content:center; height:100%;
+  color:#9ca3af; font-size:.95rem; text-align:center; padding:0 16px;}
+.card {border:1px solid var(--border-color-primary); border-radius:14px;
+  padding:4px 18px; background:var(--background-fill-secondary); min-height:200px;}
+#foot {text-align:center; color:var(--body-text-color-subdued); font-size:.85rem; margin-top:14px;}
+footer {display:none !important;}
+"""
+
+
+THEME = gr.themes.Soft(
+    primary_hue="red", neutral_hue="slate",
+    font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+)
+
+
+def build():
+    """Construct the Gradio UI (kept separate from launch so it can be import-tested)."""
+    with gr.Blocks(title="What's in this video?") as demo:
+        gr.HTML(HERO)
+        with gr.Group():
+            url = gr.Textbox(label="YouTube link", lines=1,
+                             placeholder="https://www.youtube.com/watch?v=…")
+            with gr.Row():
+                category = gr.Dropdown(choices=CATEGORIES, value="Any",
+                                       label="What are you looking for?", scale=2)
+                focus = gr.Textbox(label="Anything specific? (optional)", scale=3,
+                                   placeholder="e.g. the editing tool · the game")
+            go = gr.Button("🔍 Identify", variant="primary", elem_id="go")
+        with gr.Row(equal_height=True):
+            preview = gr.HTML(embed_html(""))
+            out = gr.Markdown("*Results will appear here after you hit Identify.*",
+                              elem_classes=["card"])
+        gr.Examples(examples=[["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Song", ""]],
+                    inputs=[url, category, focus], label="Try an example")
+        gr.HTML(FOOT)
+
+        url.change(embed_html, url, preview)          # live preview as you paste
+        go.click(embed_html, url, preview)            # ensure preview on click too
+        go.click(run, [url, category, focus], out)    # identify
+        url.submit(run, [url, category, focus], out)  # Enter = identify
+    return demo
+
+
 def main():
-    demo = gr.Interface(
-        fn=run,
-        inputs=[
-            gr.Textbox(label="YouTube link",
-                       placeholder="https://www.youtube.com/watch?v=..."),
-            gr.Dropdown(choices=CATEGORIES, value="Any",
-                        label="What are you looking for? (narrows the search)"),
-            gr.Textbox(label="Anything specific? (optional)",
-                       placeholder="e.g. the editing tool · the game · the song"),
-        ],
-        outputs=gr.Markdown(label="What's in it"),
-        title="What's in this video?",
-        description=("Paste a YouTube link → get the movies, shows, anime, games, and "
-                     "tools the creator showed but didn't name. No 'comment for the link' needed."),
-    )
     # Add share=True for a temporary public link you can send to a friend.
-    demo.launch()
+    build().launch(theme=THEME, css=CSS)
 
 
 if __name__ == "__main__":
